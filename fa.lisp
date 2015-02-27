@@ -1,4 +1,5 @@
 ;;; Filterai - The AI that created image filters based on paintings
+;;; Uses the Opticl common lisp library - https://github.com/slyrus/opticl
 ;;; Harry Scells 2015
 
 ;; Load the image processing library
