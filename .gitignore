@@ -3,3 +3,4 @@
 *.lisp-temp
 output
 quicklisp
+*.png
