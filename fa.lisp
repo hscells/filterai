@@ -54,9 +54,9 @@
    (greyscale-image img)
    (setf m (make-array '(3 3)
       :initial-contents
-         '((1 -2 1)
-            (-2 4 -2)
-            (1 -2 1))))
+         '(( 1 -2  1)
+           (-2  4 -2)
+           ( 1 -2  1))))
    (setf img (discrete-convolve img m))
    (setf sigma (add-all-elements img))
    (write-image img output) ; output the image for now
@@ -66,6 +66,22 @@
             (with-image-bounds (height width) img
                (setf sigma (* sigma (sqrt (* 0.5 pi)) (/ 1 (* 6 (- width 2) (- height 2)))))))))sigma)
 
+;; Edge detect
+; http://academypublisher.com/ijrte/vol01/no02/ijrte0102250254.pdf
+(defun edge-detect (img output)
+   (greyscale-image img)
+   (setf m (make-array '(3 3)
+      :initial-contents
+         '(( 1  0  0)
+           ( 0  0  0)
+           ( 0  0 -1))))
+   (setf img (discrete-convolve img m))
+   (write-image img output)) ; output the image for now
+
 ;; Shorthand function to run the noise estimation
 (defun noise (input output)
    (estimate-noise (load-painting input) output))
+
+;; Shorthand function to run the noise estimation
+(defun edge (input output)
+   (edge-detect (load-painting input) output))
