@@ -98,7 +98,8 @@
                         (setf (pixel img i j)
                            (values grey grey grey))))))))))
 
-;; Perform an edge thinning algorithm
+;; Perform an edge thinning algorithm;
+;; http://homepages.inf.ed.ac.uk/rbf/HIPR2/thin.htm
 (defun edge-thin (img)
    (typecase img
       (8-bit-rgb-image
@@ -106,28 +107,27 @@
             (with-image-bounds (height width) img
                (loop for i below height do
                   (loop for j below width do
-                     (setf empty nil)
                      (setf c 0)
+                     (setf empty nil)
                      (dolist (f (multiple-value-list-remove-nulls (8-neighbors img i j)))
-                        (if (not (null f))
                            (multiple-value-bind (_r _g _b)
                               (pixel img i j)
-                              (declare (type (unsigned-byte 8) _r _g _b)))
-                           (multiple-value-bind (r1 g1 b1)
-                              (pixel img (first f) (second f))
-                              (declare (type (unsigned-byte 8) r1 g1 b1))
-                                 ;((and (eq _r 0) (eq r1 255)) (setf empty nil))
-                                 ;((and (eq _r 255) (eq r1 255)) (setf empty nil))
-                                 (setf c 6)
-                                 (if (and (eq _r 255) (eq r1 0)) (setf c (+ c 1))))))
+                              (declare (type (unsigned-byte 8) _r _g _b))
+                              (multiple-value-bind (r1 g1 b1)
+                                 (pixel img (first f) (second f))
+                                 (declare (type (unsigned-byte 8) r1 g1 b1))
+                                    ;((and (eq _r 0) (eq r1 255)) (setf empty nil))
+                                    ;((and (eq _r 255) (eq r1 255)) (setf empty nil))
+                                    (if (and (eq _r 255) (eq r1 0)) (setf c (+ c 1)))
+                                    ;(setf c 6)
+                                 )))
                      (multiple-value-bind (r g b)
                         (pixel img i j)
                         (declare (type (unsigned-byte 8) r g b))
                            (setf v r)
-                           (format t "~S~%" c)
                            (if (eq c 8) (setf v 0))
                            (setf (pixel img i j)
-                           (values v v v))))))))))
+                              (values v v v))))))))))
 
 
 (defun threashold-image (img amount)
