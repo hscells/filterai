@@ -10,6 +10,7 @@
 (use-package 'opticl)
 
 (defparameter *edge-kernel* #2A((0 1 0) (1 -4 1) (0 1 0)))
+(defparameter *dilate-map* #3A(((-1 -1) (0 -1) (1 -1)) ((-1 0) (0 0) (1 0)) ((-1 1) (0 1) (1 1))))
 ;; Convert an image into RGB pixels
 (defun load-painting (name)
    (let ((img (read-png-file name))) img))
@@ -108,6 +109,9 @@
                (loop for i below height do
                   (loop for j below width do
                      (setf c 0)
+                     (setf w 0)
+                     (setf l 0)
+                     (setf v 255)
                      (setf empty nil)
                      (dolist (f (multiple-value-list-remove-nulls (8-neighbors img i j)))
                            (multiple-value-bind (_r _g _b)
@@ -117,8 +121,10 @@
                                  (pixel img (first f) (second f))
                                  (declare (type (unsigned-byte 8) r1 g1 b1))
                                     ;((and (eq _r 0) (eq r1 255)) (setf empty nil))
-                                    ;((and (eq _r 255) (eq r1 255)) (setf empty nil))
+                                    (if (and (eq _r 255) (eq r1 255)) (setf w (+ w 1)))
                                     (if (and (eq _r 255) (eq r1 0)) (setf c (+ c 1)))
+                                    (if (and (eq _r 0) (eq r1 255)) (setf l (+ l 1)))
+                                    ;(if (and (eq _r 0) (eq r1 255)) (setf w (+ w 1)))
                                     ;(setf c 6)
                                  )))
                      (multiple-value-bind (r g b)
@@ -126,6 +132,10 @@
                         (declare (type (unsigned-byte 8) r g b))
                            (setf v r)
                            (if (eq c 8) (setf v 0))
+                           ;(if (eq c 2) (setf v 255))
+                           ;(if (eq w 3) (setf v 0))
+                           ;(if (eq l 2) (setf v 100))
+                           ;(if (eq c 5) (setf v 100))
                            (setf (pixel img i j)
                               (values v v v))))))))))
 
@@ -182,15 +192,19 @@
 (defun edge-detect (img output)
    (format t "Converting to greyscale~%")
    (greyscale-image img)
+   
    (format t "Bluring image~%")
-   (blur-image img)
-   ; perform sobel edge detect on image
+   (setf img (blur-image img))
+
+   (format t "Dilate the image~%")
+   (setf img (dilate (discrete-convolve img *edge-kernel*)
+      (make-8-bit-rgb-image 3 3 :initial-element 3)))
+
    (format t "Applying edge detect~%")
    (setf img (discrete-convolve img *edge-kernel*))
-   (format t "Threashold the image~%")
-   (threashold-image img 60)
 
-   ;(format t "Label components~%~S~%" (label-components img))
+   (format t "Threashold the image~%")
+   (threashold-image img 30)
 
    (format t "Edge thinning (long process)~%")
    (edge-thin img)
@@ -208,4 +222,6 @@
 
 (defun e ()
    (load 'fa.lisp)
-   (edge "images/the_scream.png" "output/scream_edge.png"))
+   (edge "images/the_scream.png" "output/scream_edge.png")
+   ;(edge "images/starry_night.png" "output/starry_night_edge.png")
+   )
