@@ -109,8 +109,6 @@
                (loop for i below height do
                   (loop for j below width do
                      (setf c 0)
-                     (setf w 0)
-                     (setf l 0)
                      (setf v 255)
                      (setf empty nil)
                      (dolist (f (multiple-value-list-remove-nulls (8-neighbors img i j)))
@@ -120,22 +118,12 @@
                               (multiple-value-bind (r1 g1 b1)
                                  (pixel img (first f) (second f))
                                  (declare (type (unsigned-byte 8) r1 g1 b1))
-                                    ;((and (eq _r 0) (eq r1 255)) (setf empty nil))
-                                    (if (and (eq _r 255) (eq r1 255)) (setf w (+ w 1)))
-                                    (if (and (eq _r 255) (eq r1 0)) (setf c (+ c 1)))
-                                    (if (and (eq _r 0) (eq r1 255)) (setf l (+ l 1)))
-                                    ;(if (and (eq _r 0) (eq r1 255)) (setf w (+ w 1)))
-                                    ;(setf c 6)
-                                 )))
+                                    (if (and (eq _r 255) (eq r1 0)) (setf c (+ c 1))))))
                      (multiple-value-bind (r g b)
                         (pixel img i j)
                         (declare (type (unsigned-byte 8) r g b))
                            (setf v r)
                            (if (eq c 8) (setf v 0))
-                           ;(if (eq c 2) (setf v 255))
-                           ;(if (eq w 3) (setf v 0))
-                           ;(if (eq l 2) (setf v 100))
-                           ;(if (eq c 5) (setf v 100))
                            (setf (pixel img i j)
                               (values v v v))))))))))
 
@@ -153,6 +141,28 @@
                         (if (> r amount) (setf v 255) (setf v 0))
                         (setf (pixel img i j)
                            (values v v v))))))))))
+
+(defun colourise-components (img)
+   (setf comp (label-components img))
+   (setf c 0)
+   (setf l 0)
+   (setf col (list (random 255) (random 255) (random 255)))
+   (typecase img
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image img))
+            (with-image-bounds (height width) img
+               (loop for i below height do
+                  (loop for j below width do
+                     (setf c (nth i (nth j comp)))
+                     (multiple-value-bind (r g b)
+                        (pixel img i j)
+                        (declare (type (unsigned-byte 8) r g b))
+                        (if (and (not (eq l ))))
+                        (setf (pixel img i j)
+                           (values (first col) (second col) (third col))))
+                     (setf l c)
+                     (if (and (not (eq c l)) (not (eq c 0)))
+                        (setf col (list (random 255) (random 255) (random 255)))))))))))
 ;; Sums an array
 ; https://faculty.washington.edu/ikalet/courses/lisp/code/arrays.cl
 (defun add-all-elements (arr)
@@ -192,7 +202,7 @@
 (defun edge-detect (img output)
    (format t "Converting to greyscale~%")
    (greyscale-image img)
-   
+
    (format t "Bluring image~%")
    (setf img (blur-image img))
 
@@ -209,6 +219,11 @@
    (format t "Edge thinning (long process)~%")
    (edge-thin img)
 
+   (format t "labelling ~%")
+   (setf img (colourise-components img))
+   ;(format t "K-means clustering~%")
+   ;(format t "~S~%" (k-means-cluster-image-pixels img 2))
+
    (format t "Writing to file~%")
    (write-image img output)) ; output the image for now
 
@@ -222,6 +237,7 @@
 
 (defun e ()
    (load 'fa.lisp)
+   ;(edge "images/odetojoy.png" "output/odetojoy_edge.png")
    (edge "images/the_scream.png" "output/scream_edge.png")
    ;(edge "images/starry_night.png" "output/starry_night_edge.png")
    )
