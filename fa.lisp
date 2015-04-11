@@ -108,9 +108,7 @@
             (with-image-bounds (height width) img
                (loop for i below height do
                   (loop for j below width do
-                     (setf c 0)
-                     (setf v 255)
-                     (setf empty nil)
+                     (setf neighbors 0)
                      (dolist (f (multiple-value-list-remove-nulls (8-neighbors img i j)))
                            (multiple-value-bind (_r _g _b)
                               (pixel img i j)
@@ -118,12 +116,12 @@
                               (multiple-value-bind (r1 g1 b1)
                                  (pixel img (first f) (second f))
                                  (declare (type (unsigned-byte 8) r1 g1 b1))
-                                    (if (and (eq _r 255) (eq r1 0)) (setf c (+ c 1))))))
+                                    (if (eq r1 255) (setf neighbors (+ neighbors 1))))))
                      (multiple-value-bind (r g b)
                         (pixel img i j)
                         (declare (type (unsigned-byte 8) r g b))
-                           (setf v r)
-                           (if (eq c 8) (setf v 0))
+                           (if (= neighbors 0) (setf v 10) (setf v r))
+                           ;(if (= neighbors 1) (setf v 10) (setf v r))
                            (setf (pixel img i j)
                               (values v v v))))))))))
 
@@ -141,6 +139,23 @@
                         (if (> r amount) (setf v 255) (setf v 0))
                         (setf (pixel img i j)
                            (values v v v))))))))))
+
+(defun overlay (skeleton origional)
+   (typecase origional
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image origional))
+            (with-image-bounds (height width) origional
+               (loop for i below height do
+                  (loop for j below width do
+                     (multiple-value-bind (r g b)
+                        (pixel skeleton i j)
+                        (declare (type (unsigned-byte 8) r g b))
+                        (multiple-value-bind (r1 g1 b1)
+                           (pixel origional i j)
+                           (declare (type (unsigned-byte 8) r1 g1 b1))
+                           (if (= r 255) (setf v 255) (setf v r1))
+                           (setf (pixel origional i j)
+                              (values v v v)))))))))))
 
 (defun colourise-components (img)
    (setf comp (label-components img))
@@ -199,9 +214,14 @@
 
 ;; Edge detect
 ; http://academypublisher.com/ijrte/vol01/no02/ijrte0102250254.pdf
-(defun edge-detect (img output)
+(defun edge-detect (input output)
+
+   (setf img (load-painting input))
+   (setf org (load-painting input))
+
    (format t "Converting to greyscale~%")
    (greyscale-image img)
+   (greyscale-image org)
 
    (format t "Bluring image~%")
    (setf img (blur-image img))
@@ -219,13 +239,15 @@
    (format t "Edge thinning (long process)~%")
    (edge-thin img)
 
-   (format t "labelling ~%")
-   (setf img (colourise-components img))
-   ;(format t "K-means clustering~%")
-   ;(format t "~S~%" (k-means-cluster-image-pixels img 2))
+   (format t "overlaying image~%")
+   (overlay img org)
+   ;(format t "labelling ~%")
+   ;(setf img (colourise-components img))
+   (format t "K-means clustering~%")
+   (format t "~S" (k-means-cluster-image-pixels org 3))
 
    (format t "Writing to file~%")
-   (write-image img output)) ; output the image for now
+   (write-image org output)) ; output the image for now
 
 ;; Shorthand function to run the noise estimation
 (defun noise (input output)
@@ -233,11 +255,15 @@
 
 ;; Shorthand function to run the edge detection
 (defun edge (input output)
-   (edge-detect (load-painting input) output))
+   (edge-detect input output))
 
 (defun e ()
    (load 'fa.lisp)
    ;(edge "images/odetojoy.png" "output/odetojoy_edge.png")
    (edge "images/the_scream.png" "output/scream_edge.png")
+   ;(edge "images/odetojoy.png" "output/odetojoy_edge.png")
+   ;(edge "images/im_blauen.png" "output/im_blauen_edge.png")
+   ;(edge "images/pacman_game.png" "output/pacman_game_edge.png")
+   ;(edge "images/stardust.png" "output/stardust_edge.png")
    ;(edge "images/starry_night.png" "output/starry_night_edge.png")
    )
