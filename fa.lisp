@@ -153,9 +153,11 @@
                         (multiple-value-bind (r1 g1 b1)
                            (pixel origional i j)
                            (declare (type (unsigned-byte 8) r1 g1 b1))
-                           (if (= r 255) (setf v 255) (setf v r1))
-                           (setf (pixel origional i j)
-                              (values v v v)))))))))))
+                           (if (= r 255)
+                              (setf (pixel origional i j)
+                                 (values 255 255 255))
+                              (setf (pixel origional i j)
+                                 (values r1 g1 b1))))))))))))
 
 (defun colourise-components (img)
    (setf comp (label-components img))
@@ -221,7 +223,7 @@
 
    (format t "Converting to greyscale~%")
    (greyscale-image img)
-   (greyscale-image org)
+   ;(greyscale-image org)
 
    (format t "Bluring image~%")
    (setf img (blur-image img))
@@ -243,8 +245,8 @@
    (overlay img org)
    ;(format t "labelling ~%")
    ;(setf img (colourise-components img))
-   (format t "K-means clustering~%")
-   (format t "~S" (k-means-cluster-image-pixels org 3))
+   ;(format t "K-means clustering~%")
+   ;(format t "~S" (k-means-cluster-image-pixels org 3))
 
    (format t "Writing to file~%")
    (write-image org output)) ; output the image for now
