@@ -188,47 +188,6 @@ arguments."
             (when (> i 0) (list (1- i) j)) ; top
             )))
 
-(defmacro multiple-value-list-remove-nulls (values)
-  `(remove-if #'null (multiple-value-list ,values)))
-
-(defun label-components (img &key (neighbor-function #'4-neighbors))
-  (with-image-bounds (height width)
-      img
-    (let ((label-array (make-array (list height width)
-                                   :element-type 'fixnum
-                                   :initial-element 0))
-          (stack)
-          (label-value 0))
-      (dotimes (i height)
-        (dotimes (j width)
-          (when (= 0 (aref label-array i j))
-            (let ((current-label-value (multiple-value-list (pixel img i j))))
-              (incf label-value)
-              (setf (aref label-array i j) label-value)
-              (mapcar (lambda (p)
-                        (destructuring-bind (ni nj) p
-                          (when (equalp current-label-value
-                                        (multiple-value-list
-                                         (pixel img ni nj)))
-                            (push p stack)
-                            (setf (aref label-array ni nj) label-value))))
-                      (multiple-value-list-remove-nulls
-                       (funcall neighbor-function img i j)))
-              ;; now we walk through the list....
-              (do ((k (pop stack) (pop stack)))
-                  ((null k))
-                (mapcar (lambda (p)
-                          (destructuring-bind (ni nj) p
-                            (when (and (equalp current-label-value
-                                               (multiple-value-list
-                                                (pixel img ni nj)))
-                                       (= 0 (aref label-array ni nj)))
-                              (push p stack)
-                              (setf (aref label-array ni nj) label-value))))
-                        (multiple-value-list-remove-nulls
-                         (funcall neighbor-function img (car k) (cadr k)))))))))
-      (map-array #'1- label-array))))
-
 ;; Perform a very simple modification to the pixels in an image to greyscale it
 (defun greyscale-image (img)
    (typecase img
