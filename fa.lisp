@@ -9,6 +9,151 @@
 ;; Define packages to use
 (use-package 'opticl)
 
+(defun copy-array (src &key (element-type (array-element-type src))
+                            (fill-pointer (and (array-has-fill-pointer-p src)
+                                               (fill-pointer src)))
+                            (adjustable (adjustable-array-p src)))
+  "Returns an undisplaced copy of ARRAY, with same fill-pointer and
+adjustability (if any) as the original, unless overridden by the keyword
+arguments."
+  (let ((dims (array-dimensions src)))
+    ;; Dictionary entry for ADJUST-ARRAY requires adjusting a
+    ;; displaced array to a non-displaced one to make a copy.
+    (let* ((src-displaced (make-array (reduce #'* dims)
+                                      :displaced-to src
+                                      :element-type element-type))
+           (dest (make-array dims :element-type element-type
+                                  :fill-pointer fill-pointer
+                                  :adjustable adjustable))
+           (dest-displaced (make-array (reduce #'* dims)
+                                       :displaced-to dest
+                                       :element-type element-type)))
+      (replace dest-displaced src-displaced)
+      dest)))
+
+(defun l2-distance-3 (pixel1a pixel1b pixel1c pixel2a pixel2b pixel2c)
+  (declare (type fixnum pixel1a pixel1b pixel1c pixel2a pixel2b pixel2c)
+           (optimize (speed 3) (safety 0)))
+  (let ((d1 (- pixel1a pixel2a))
+        (d2 (- pixel1b pixel2b))
+        (d3 (- pixel1c pixel2c)))
+    (declare (type fixnum d1 d2 d3))
+    (the fixnum (+ (the fixnum (* d1 d1))
+                   (the fixnum (* d2 d2))
+                   (the fixnum (* d3 d3))))))
+
+(declaim (ftype (function (fixnum fixnum fixnum fixnum fixnum fixnum) fixnum) l2-distance-3))
+
+(defun k-means (image k &key (max-iterations 20))
+  (declare (type fixnum k))
+  (typecase image
+    (8-bit-rgb-image
+     (with-image-bounds (height width channels) image
+       (let ((means (make-array (list k 1 3)
+                                :element-type '(unsigned-byte 32)))
+             (counts (make-array k :element-type 'fixnum))
+             (z (make-array (list height width) :element-type 'fixnum)))
+         (declare (type (simple-array fixnum (* *)) z)
+                  (type 8-bit-rgb-image image)
+                  (type (simple-array (unsigned-byte 32) (* * 3)) means))
+         (flet (
+            (recompute-means ()
+                  (declare (type 8-bit-rgb-image image)
+                           (type (simple-array fixnum (* *)) z)
+                           (type (simple-array fixnum (*)) counts)
+                           (optimize (speed 3)))
+                  ;; clear out the old values
+                  (dotimes (q k)
+                    (setf (pixel means q 0) (values 0 0 0))
+                    (setf (aref counts q) 0))
+
+                  ;; use the means vector first as an accumulator to hold
+                  ;; the sums for each channel, later we'll scale by (/
+                  ;; num-pixels)
+                  (do-pixels (i j) image
+                    (let ((m (aref z i j)))
+                      (multiple-value-bind (v1 v2 v3)
+                          (pixel image i j)
+                        (multiple-value-bind (m1 m2 m3)
+                            (pixel means m 0)
+                          (setf (pixel means m 0)
+                                (values
+                                 (+ v1 m1)
+                                 (+ v2 m2)
+                                 (+ v3 m3)))))
+                      (let* ((cluster (aref z i j))
+                             (cluster-count (aref counts cluster)))
+                        (setf (aref counts cluster)
+                              (logand #xffffffff (1+ cluster-count))))))
+                  (dotimes (q k)
+                    (when (plusp (aref counts q))
+                      (multiple-value-bind (m1 m2 m3)
+                          (pixel means q 0)
+                        (let ((factor (aref counts q)))
+                          (setf (pixel means q 0)
+                                (values (truncate (/ m1 factor))
+                                        (truncate (/ m2 factor))
+                                        (truncate (/ m3 factor))))))))
+                  (let ((new-means-list
+                         (loop for count across counts
+                            for i below k
+                            collect (list count (pixel* means i 0)))))
+                    (loop for i fixnum below k
+                       for (count mean) in (sort new-means-list #'> :key #'first)
+                       do
+                         (setf (pixel* means i 0) mean)
+                         (setf (aref counts i) count))))
+
+                (assign-to-means ()
+                  (declare (type 8-bit-rgb-image image)
+                           (optimize (speed 3)))
+                  (do-pixels (i j) image
+                    (setf (aref z i j)
+                          (let (min-val nearest-mean)
+                            (loop for q below k
+                               do (let ((dist (multiple-value-call #'l2-distance-3
+                                                (pixel image i j)
+                                                (pixel means q 0))))
+                                    (when (or (null min-val) (< dist min-val))
+                                      (setf min-val dist
+                                            nearest-mean q))))
+                            nearest-mean)))))
+
+           ;; randomly assign pixel values to the k means
+           (loop for i below k
+              for y = (random height)
+              for x = (random width)
+              do (setf (pixel means i 0)
+                       (pixel image y x)))
+
+           (loop for iter below max-iterations
+              with stop = nil
+              with oldz
+              until stop
+              do
+              (assign-to-means)
+              (recompute-means)
+              (when (and oldz (equalp oldz z))
+                (setf stop t))
+              (setf oldz (copy-array z)))
+
+           (typecase image
+              (8-bit-rgb-image
+                 (locally (declare (type 8-bit-rgb-image image))
+                    (with-image-bounds (height width) image
+                       (loop for i below height do
+                          (loop for j below width do
+                             (multiple-value-bind (r g b)
+                                (pixel image i j)
+                                (declare (type (unsigned-byte 8) r g b))
+                                (setf v (aref z i j))
+                                (setf (pixel image i j)
+                                 (values (aref means v 0 0) (aref means v 0 1) (aref means v 0 2))))))))))))))))
+           ;(values means z)))))))
+
+
+
+
 (defparameter *edge-kernel* #2A((0 1 0) (1 -4 1) (0 1 0)))
 (defparameter *dilate-map* #3A(((-1 -1) (0 -1) (1 -1)) ((-1 0) (0 0) (1 0)) ((-1 1) (0 1) (1 1))))
 ;; Convert an image into RGB pixels
