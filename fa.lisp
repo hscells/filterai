@@ -267,7 +267,8 @@
 
 ;; Perform an edge thinning algorithm;
 ;; http://homepages.inf.ed.ac.uk/rbf/HIPR2/thin.htm
-(defun edge-thin-means (img)
+;; Would like to get this to work to remove all the single pixels
+(defun edge-thin-means (img img2)
 	(typecase img
 		(8-bit-rgb-image
 			(locally (declare (type 8-bit-rgb-image img))
@@ -275,7 +276,6 @@
 					(loop for i below height do
 						(loop for j below width do
 							(setf neighbors 0)
-							(setf v 0)
 							(dolist (f (multiple-value-list-remove-nulls (8-neighbors img i j)))
 									(multiple-value-bind (_r _g _b)
 										(pixel img i j)
@@ -283,15 +283,14 @@
 										(multiple-value-bind (r1 g1 b1)
 											(pixel img (first f) (second f))
 											(declare (type (unsigned-byte 8) r1 g1 b1))
-												(setf v r1)
-												(if (eq r1 255) (setf neighbors (+ neighbors 1))))))
+                                    (setf v r1)
+												(if (not (eq r1 _r)) (setf neighbors (+ neighbors 1))))))
 							(multiple-value-bind (r g b)
-								(pixel img i j)
+								(pixel img2 i j)
 								(declare (type (unsigned-byte 8) r g b))
-                           (if (= neighbors 0)
-									;(if (= neighbors 1) (setf v 10) (setf v r))
-										(setf (pixel img i j)
-											(values v v v))))))))))
+                           (if (> neighbors 0)
+   									(setf (pixel img2 i j)
+   										(values v v v)))))))))))
 
 ;; Perform a threasholding operation on the image
 (defun threashold-image (img amount)
@@ -457,6 +456,18 @@
 								(setf blobs (append blobs (list 1)))
 								(setf (nth (aref array i j) blobs) (+ (nth (aref array i j) blobs) 1))))))))) blobs)
 
+(defun sum-l (l)
+   (apply '+ l))
+
+(defun avg-l (l)
+   (float (/ (sum-l l) (length l))))
+
+(defun max-l (l)
+   (apply 'max l))
+
+(defun min-l (l)
+   (apply 'min l))
+
 (defun label (image)
 	(setf img (load-painting image))
 	(sum-components (label-components img) img))
@@ -474,4 +485,12 @@
 	)
 
 (defun l ()
-	(load 'fa.lisp))
+   (load 'fa.lisp)
+   (stats))
+
+(defun stats ()
+   (setf blobs (label "output/scream.png"))
+   (format t "Average size stroke ~S~%" (avg-l blobs))
+   (format t "Minimum size stroke ~S~%" (min-l blobs))
+   (format t "Maximum size stroke ~S~%" (max-l blobs))
+   )
