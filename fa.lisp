@@ -10,9 +10,12 @@
 (use-package 'opticl)
 
 (defparameter *edge-kernel* #2A((0 1 0) (1 -4 1) (0 1 0)))
+(defparameter *dilate* #2A((0 1 0) (-1 4 1) (0 1 0)))
 (defparameter *dilate-map* #3A(((-1 -1) (0 -1) (1 -1)) ((-1 0) (0 0) (1 0)) ((-1 1) (0 1) (1 1))))
+(defparameter *gaussian* #2A((1 2 1) (2 4 2) (1 2 1)))
 
 (declaim (ftype (function (fixnum fixnum fixnum fixnum fixnum fixnum) fixnum) l2-distance-3))
+
 
 (defmacro multiple-value-list-remove-nulls (values)
   `(remove-if #'null (multiple-value-list ,values)))
@@ -307,6 +310,24 @@
 								(setf (pixel img i j)
 									(values v v v))))))))))
 
+;; Perform a threasholding operation on the image
+(defun threashold-image-colour (img amount)
+	(typecase img
+		(8-bit-rgb-image
+			(locally (declare (type 8-bit-rgb-image img))
+				(with-image-bounds (height width) img
+					(loop for i below height do
+						(loop for j below width do
+							(multiple-value-bind (r g b)
+								(pixel img i j)
+								(declare (type (unsigned-byte 8) r g b))
+                        (setf grey (floor (/ (+ r g b) 3)))
+								(if (>= grey amount)
+   								(setf (pixel img i j)
+   									(values 0 0 0)))))))))))
+
+
+
 ;; overlay an egde over the top of another image
 (defun overlay (skeleton origional)
 	(typecase origional
@@ -327,6 +348,25 @@
 											(values grey grey grey))
 										(setf (pixel origional i j)
 											(values r1 g1 b1))))))))))))
+
+(defun overlay-stroke (source strokes)
+   (typecase source
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image source))
+            (with-image-bounds (height width) source
+               (loop for i below height do
+                  (loop for j below width do
+                     (multiple-value-bind (r g b)
+                        (pixel strokes i j)
+                        (declare (type (unsigned-byte 8) r g b))
+                        (multiple-value-bind (r1 g1 b1)
+                           (pixel source i j)
+                           (declare (type (unsigned-byte 8) r1 g1 b1))
+                           (if (= r 0)
+                              (setf (pixel source i j)
+                                 (values r g b))
+                              (setf (pixel source i j)
+                                 (values r1 g1 b1))))))))))))
 
 ;; unused
 (defun colourise-components (img)
@@ -470,7 +510,29 @@
 
 (defun label (image)
 	(setf img (load-painting image))
-	(sum-components (label-components img) img))
+	(sort (sum-components (label-components img) img) #'>))
+
+(defun stroke (source reference stroke)
+   (format t "painting ~S sized strokes~%" stroke)
+   (setf canvas (copy-image reference))
+   (threashold-image-colour canvas stroke)
+   (setf canvas (blur-image canvas))
+   (overlay-stroke source canvas))
+
+(defun paint (source r)
+   (setf r (remove-duplicates r))
+   (setf source (load-painting source))
+   (setf reference (copy-image source))
+   (loop for i in r do
+      (setf source (stroke source reference i))))
+      ;(setf source (blur-image source))) source)
+
+(defun filter (filter input output)
+   (format t "Labelling components~%")
+   (setf blobs (label filter))
+   (format t "Painting photo~%")
+   (setf painting (paint input blobs))
+   (write-image painting output))
 
 (defun e ()
 	(load 'fa.lisp)
@@ -484,9 +546,8 @@
 	;(edge "images/starry_night.png" "output/starry_night_edge.png")
 	)
 
-(defun l ()
-   (load 'fa.lisp)
-   (stats))
+(defun f ()
+   (filter "output/pacman_game_edge.png" "images/lenna.png" "output/lenna_painting.png"))
 
 (defun stats ()
    (setf blobs (label "output/scream.png"))
