@@ -19,40 +19,40 @@
 
 (defun label-components (img &key (neighbor-function #'4-neighbors))
   (with-image-bounds (height width) img
-    (let ((label-array (make-array (list height width)
-                                   :element-type 'fixnum
-                                   :initial-element 0))
-          (stack)
-          (label-value 0))
-      (dotimes (i height)
-        (dotimes (j width)
-          (when (= 0 (aref label-array i j))
-            (let ((current-label-value (multiple-value-list (pixel img i j))))
-              (incf label-value)
-              (setf (aref label-array i j) label-value)
-              (mapcar (lambda (p)
-                        (destructuring-bind (ni nj) p
-                          (when (equalp current-label-value
-                                        (multiple-value-list
-                                         (pixel img ni nj)))
-                            (push p stack)
-                            (setf (aref label-array ni nj) label-value))))
-                      (multiple-value-list-remove-nulls
-                       (funcall neighbor-function img i j)))
-              ;; now we walk through the list....
-              (do ((k (pop stack) (pop stack)))
-                  ((null k))
-                (mapcar (lambda (p)
-                          (destructuring-bind (ni nj) p
-                            (when (and (equalp current-label-value
-                                               (multiple-value-list
-                                                (pixel img ni nj)))
-                                       (= 0 (aref label-array ni nj)))
-                              (push p stack)
-                              (setf (aref label-array ni nj) label-value))))
-                        (multiple-value-list-remove-nulls
-                         (funcall neighbor-function img (car k) (cadr k)))))))))
-      (map-array #'1- label-array))))
+	 (let ((label-array (make-array (list height width)
+											  :element-type 'fixnum
+											  :initial-element 0))
+			 (stack)
+			 (label-value 0))
+		(dotimes (i height)
+		  (dotimes (j width)
+			 (when (= 0 (aref label-array i j))
+				(let ((current-label-value (multiple-value-list (pixel img i j))))
+				  (incf label-value)
+				  (setf (aref label-array i j) label-value)
+				  (mapcar (lambda (p)
+								(destructuring-bind (ni nj) p
+								  (when (equalp current-label-value
+													 (multiple-value-list
+													  (pixel img ni nj)))
+									 (push p stack)
+									 (setf (aref label-array ni nj) label-value))))
+							 (multiple-value-list-remove-nulls
+							  (funcall neighbor-function img i j)))
+				  ;; now we walk through the list....
+				  (do ((k (pop stack) (pop stack)))
+						((null k))
+					 (mapcar (lambda (p)
+								  (destructuring-bind (ni nj) p
+									 (when (and (equalp current-label-value
+															  (multiple-value-list
+																(pixel img ni nj)))
+													(= 0 (aref label-array ni nj)))
+										(push p stack)
+										(setf (aref label-array ni nj) label-value))))
+								(multiple-value-list-remove-nulls
+								 (funcall neighbor-function img (car k) (cadr k)))))))))
+		(map-array #'1- label-array))))
 
 (defun copy-array (src &key (element-type (array-element-type src))
 									 (fill-pointer (and (array-has-fill-pointer-p src)
@@ -265,6 +265,34 @@
 									(setf (pixel img i j)
 										(values v v v))))))))))
 
+;; Perform an edge thinning algorithm;
+;; http://homepages.inf.ed.ac.uk/rbf/HIPR2/thin.htm
+(defun edge-thin-means (img)
+	(typecase img
+		(8-bit-rgb-image
+			(locally (declare (type 8-bit-rgb-image img))
+				(with-image-bounds (height width) img
+					(loop for i below height do
+						(loop for j below width do
+							(setf neighbors 0)
+							(setf v 0)
+							(dolist (f (multiple-value-list-remove-nulls (8-neighbors img i j)))
+									(multiple-value-bind (_r _g _b)
+										(pixel img i j)
+										(declare (type (unsigned-byte 8) _r _g _b))
+										(multiple-value-bind (r1 g1 b1)
+											(pixel img (first f) (second f))
+											(declare (type (unsigned-byte 8) r1 g1 b1))
+												(setf v r1)
+												(if (eq r1 255) (setf neighbors (+ neighbors 1))))))
+							(multiple-value-bind (r g b)
+								(pixel img i j)
+								(declare (type (unsigned-byte 8) r g b))
+                           (if (= neighbors 0)
+									;(if (= neighbors 1) (setf v 10) (setf v r))
+										(setf (pixel img i j)
+											(values v v v))))))))))
+
 ;; Perform a threasholding operation on the image
 (defun threashold-image (img amount)
 	(typecase img
@@ -423,14 +451,14 @@
 		(8-bit-rgb-image
 			(locally (declare (type 8-bit-rgb-image img))
 				(with-image-bounds (height width) img
-               (loop for i below height do
-                  (loop for j below width do
-                     (if (>= (aref array i j) (length blobs))
-                        (setf blobs (append blobs (list 1)))
-                        (setf (nth (aref array i j) blobs) (+ (nth (aref array i j) blobs) 1))))))))) blobs)
+					(loop for i below height do
+						(loop for j below width do
+							(if (>= (aref array i j) (length blobs))
+								(setf blobs (append blobs (list 1)))
+								(setf (nth (aref array i j) blobs) (+ (nth (aref array i j) blobs) 1))))))))) blobs)
 
 (defun label (image)
-   (setf img (load-painting image))
+	(setf img (load-painting image))
 	(sum-components (label-components img) img))
 
 (defun e ()
