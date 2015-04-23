@@ -362,11 +362,11 @@
                         (multiple-value-bind (r1 g1 b1)
                            (pixel source i j)
                            (declare (type (unsigned-byte 8) r1 g1 b1))
-                           (if (= r 0)
+                           (if (< r 64) ;; 64 used for now, needs to be something later
                               (setf (pixel source i j)
-                                 (values r g b))
+                                 (values r1 g1 b1))
                               (setf (pixel source i j)
-                                 (values r1 g1 b1))))))))))))
+                                 (values r g b))))))))))))
 
 ;; unused
 (defun colourise-components (img)
@@ -517,19 +517,22 @@
    (setf canvas (copy-image reference))
    (threashold-image-colour canvas stroke)
    (setf canvas (blur-image canvas))
-   (overlay-stroke source canvas))
+   (overlay-stroke reference canvas)
+   (write-image reference "output/test.png") reference)
 
 (defun paint (source r)
+   (format t "~S layers to paint~%" (length r))
    (setf r (remove-duplicates r))
    (setf source (load-painting source))
    (setf reference (copy-image source))
    (loop for i in r do
-      (setf source (stroke source reference i))))
+      (setf source (stroke source reference i))) source)
       ;(setf source (blur-image source))) source)
 
 (defun filter (filter input output)
    (format t "Labelling components~%")
    (setf blobs (label filter))
+   ;(setf blobs '(140 100 60 20))
    (format t "Painting photo~%")
    (setf painting (paint input blobs))
    (write-image painting output))
@@ -547,7 +550,8 @@
 	)
 
 (defun f ()
-   (filter "output/pacman_game_edge.png" "images/lenna.png" "output/lenna_painting.png"))
+   (filter "output/odetojoy_edge.png" "images/lenna.png" "output/lenna_painting_ode_to_joy.png")
+   (filter "output/scream.png" "images/lenna.png" "output/lenna_painting_scream.png"))
 
 (defun stats ()
    (setf blobs (label "output/scream.png"))
