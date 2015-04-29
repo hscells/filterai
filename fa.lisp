@@ -5,9 +5,11 @@
 ;; Load the image processing library
 (load "quicklisp/setup.lisp")
 (ql:quickload "opticl")
+(ql:quickload "jsown")
 
 ;; Define packages to use
 (use-package 'opticl)
+(use-package 'jsown)
 
 (defparameter *edge-kernel* #2A((0 1 0) (1 -4 1) (0 1 0)))
 (defparameter *dilate* #2A((0 1 0) (1 -4 1) (0 1 0)))
@@ -204,6 +206,14 @@
 (defun write-image (img name)
 	(write-png-file name img))
 
+
+(defun write-to-file (name content)
+  (with-open-file (stream  name :external-format charset:iso-8859-1
+         :direction :output
+         :if-exists :overwrite
+         :if-does-not-exist :create )
+      (format stream content)) name)
+
 (defun 4-neighbors (img i j)
    (declare (type fixnum i j))
       (with-image-bounds (height width)
@@ -348,6 +358,7 @@
 										(setf (pixel origional i j)
 											(values r1 g1 b1))))))))))))
 
+;; Takes a set of brush strokes and overlays them on top of a source
 (defun overlay-stroke (source strokes)
    (typecase source
       (8-bit-rgb-image
@@ -362,34 +373,67 @@
                            (pixel source i j)
                            (declare (type (unsigned-byte 8) r1 g1 b1))
                            (setf grey (floor (/ (+ r g b) 3)))
-                           (if (< grey 120) ;; 80 used for now, needs to be something later
+                           (if (>= grey 12) ;; used for now, needs to be something later
                               (setf (pixel source i j)
                                  (values r1 g1 b1))
                               (setf (pixel source i j)
                                  (values r g b))))))))))))
+;; Takes a set of brush strokes and overlays them on top of a source
+(defun overlay-bg (source strokes)
+   (typecase source
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image source))
+            (with-image-bounds (height width) source
+               (loop for i below height do
+                  (loop for j below width do
+                     (multiple-value-bind (r g b)
+                        (pixel strokes i j)
+                        (declare (type (unsigned-byte 8) r g b))
+                        (multiple-value-bind (r1 g1 b1)
+                           (pixel source i j)
+                           (declare (type (unsigned-byte 8) r1 g1 b1))
+                           (setf grey (floor (/ (+ r1 g1 b1) 3)))
+                           (if (<= grey 24) ;; used for now, needs to be something later
+                              (setf (pixel source i j)
+                                 (values r g b))
+                              (setf (pixel source i j)
+                                 (values r1 g1 b1))))))))))))
 
-;; unused
-(defun colourise-components (img)
-	(setf comp (label-components img))
-	(setf c 0)
-	(setf l 0)
-	(setf col (list (random 255) (random 255) (random 255)))
-	(typecase img
-		(8-bit-rgb-image
-			(locally (declare (type 8-bit-rgb-image img))
-				(with-image-bounds (height width) img
-					(loop for i below height do
-						(loop for j below width do
-							(setf c (nth i (nth j comp)))
-							(multiple-value-bind (r g b)
-								(pixel img i j)
-								(declare (type (unsigned-byte 8) r g b))
-								(if (and (not (eq l ))))
-								(setf (pixel img i j)
-									(values (first col) (second col) (third col))))
-							(setf l c)
-							(if (and (not (eq c l)) (not (eq c 0)))
-								(setf col (list (random 255) (random 255) (random 255)))))))))))
+;;; Takes a set of strokes in colour 255 and diffs them to the same source
+(defun diff-stroke (source strokes)
+   (typecase source
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image source))
+            (with-image-bounds (height width) source
+               (loop for i below height do
+                  (loop for j below width do
+                     (multiple-value-bind (r g b)
+                        (pixel strokes i j)
+                        (declare (type (unsigned-byte 8) r g b))
+                        (multiple-value-bind (r1 g1 b1)
+                           (pixel source i j)
+                           (declare (type (unsigned-byte 8) r1 g1 b1))
+                           (if (eq r 255)
+                              (setf (pixel source i j)
+                                 (values r1 g1 b1))
+                              (setf (pixel source i j)
+                                 (values 0 0 0))))))))))))
+
+
+(defun invert-greyscale (img)
+   (typecase img
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image img))
+            (with-image-bounds (height width) img
+               (loop for i below height do
+                  (loop for j below width do
+                     (multiple-value-bind (r g b)
+                        (pixel img i j)
+                        (declare (type (unsigned-byte 8) r g b))
+                        (if (eq r 0) (setf v 255))
+                        (if (eq r 255) (setf v 0))
+                        (setf (pixel img i j)
+                           (values v v v))))))))))
 
 ;; Sums an array
 ; https://faculty.washington.edu/ikalet/courses/lisp/code/arrays.cl
@@ -455,18 +499,20 @@
 	(format t "Edge thinning~%")
 	(edge-thin img)
 
+   (write-image img "output/edges.png")
+
 	(format t "overlaying image~%")
-	;(overlay img org)
+	(overlay img org)
 
 	(format t "Bluring image~%")
-	;(setf org (blur-image org))
+	(setf org (blur-image org))
 
 	(format t "K-means clustering~%")
-	;(k-means org 5)
+	(k-means org 5)
 
 
 	(format t "Writing to file~%")
-	(write-image img output)) ; output the image for now
+	(write-image org "output/blobs.png")) ; output the image for now
 
 ;; Shorthand function to run the noise estimation
 (defun noise (input output)
@@ -494,14 +540,41 @@
 (defun sum-l (l)
    (apply '+ l))
 
+(defun sum-r (L)
+   (if L
+      (+ (car L) (sum-r (cdr L)))
+      0))
+
 (defun avg-l (l)
-   (float (/ (sum-l l) (length l))))
+   (float (/ (sum-r l) (length l))))
 
 (defun max-l (l)
    (apply 'max l))
 
 (defun min-l (l)
    (apply 'min l))
+
+;; MODE
+;; Rosner 14
+;; returns two values: a list of the modes and the number of times they
+;; occur.   Rob St. Amant <stamant@csc.ncsu.edu> suggested using a hash
+;; table instead of an alist, and Lee Ayres <ayres@acm.org> noted that
+;; my revision failed to handle multiple modes properly.
+
+(defun mode-l (sequence)
+   (test-variables (sequence :numseq))
+   (let ((count-table (make-hash-table :test #'eql))
+      (modes nil)
+      (mode-count 0))
+      (map nil (lambda (elt) (incf (gethash elt count-table 0))) sequence)
+      (maphash (lambda (key value)
+         (cond ((> value mode-count)
+            (setf modes (list key)
+               mode-count value))
+            ((= value mode-count)
+               (push key modes))))
+      count-table)
+      (values modes mode-count)))
 
 (defun label (image)
 	(setf img (load-painting image))
@@ -510,38 +583,85 @@
 (defun scale (max min l)
    (float (+ (/ l max) (/ l min))))
 
-(defun stroke (source reference stroke)
-   ;(with-image-bounds (height width) reference
-   ;   (setf stroke (floor (* stroke (scale width height stroke)))))
-   ;(format t "painting ~S sized strokes~%" stroke)
-   (setf canvas (copy-image reference))
-   ;(threashold-image-colour canvas stroke)
-   (setf canvas (erode (discrete-convolve canvas *edge-kernel*)
-		(make-8-bit-rgb-image 3 3 :initial-element 3)))
-   ;(setf canvas (blur-image canvas))
-   ;(overlay-stroke reference canvas) reference)
-   canvas)
+(defun scale-stroke (max min s)
+   (if (< (scale max min s) 1)
+      (floor (* s (scale max min s)))
+      (floor (float (+ (scale max min s) 8)))))
+
+(defun circle-stroke (img ref ss x y)
+   (typecase img
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image img))
+            (with-image-bounds (height width) img)
+               (multiple-value-bind (r g b)
+                  (if (and (>= ss 8) (<= 200))
+                     (pixel ref x y)
+                     (pixel img x y))
+                  ;(format t "~%~S,~S,~S~%" r g b)
+                  (fill-circle img x y ss r g b))))))
+
+(defun stroke (source reference stroke-size)
+   ;(setf canvas (copy-image source))
+   ;(greyscale-image canvas)
+   ;(format t ".")
+   ;(if (< stroke-size 255)
+   ;   (setf canvas (dilate (discrete-convolve canvas *dilate*)
+   ;		(make-8-bit-rgb-image stroke-size stroke-size :initial-element stroke-size)))
+   ;   (threashold-image-colour canvas (ceiling (/ stroke-size 255))))
+   ;(format t ".")
+   ;(threashold-image canvas 90)
+   ;(format t ".")
+
+
+   ;(format t ".")
+   ;(if (> stroke-size 255)
+   ;   (loop for i below (ceiling (/ stroke-size 255)) do
+   ;      (setf reference (blur-image reference)))
+   ;   (diff-stroke reference canvas))
+   (typecase source
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image source))
+            (with-image-bounds (height width) source
+               (format t "." stroke-size)
+               (loop for i below (/ (+ width height) 2) do
+                  (circle-stroke source reference stroke-size (random height) (random width))))))))
+
+   ;(format t ".")
+   ;(setf reference (blur-image reference))
+
+   ;(format t ".")
+   ;(overlay-stroke source reference) source)
 
 (defun paint (source r)
-   (setf r (remove-duplicates r))
+   (format t "Painting ~S~%" source)
    (format t "~S layers to paint~%" (length r))
    (setf source (load-painting source))
    (setf reference (copy-image source))
+   ;(format t "~S" blobs)
    (loop for i in r do
-      (setf source (stroke source reference i))) source)
+      (format t "~S" i)
+      (stroke source reference i)) source)
       ;(setf source (blur-image source))) source)
 
-(defun filter (filter input output)
+(defun filter-image (filter input output)
    (format t "Labelling components~%")
-   ;(setf blobs (label filter))
-   (setf blobs '(255))
+   (setf blobs (reduce-strokes (label filter)))
+   ;(setf blobs '(8 4))
    (format t "Painting photo~%")
    (setf painting (paint input blobs))
+   ;(format t "Determining the average colour~%")
+   ;(setf col (k-means-cluster-image-pixels (load-painting input) 2))
+   ;(format t "~S~%" col)
+   ;(format t "filling image~%")
+   ;(fill-image bg (aref col 0 0 0) (aref col 0 0 1) (aref col 0 0 2))
+   ;(format t "overlaying image~%")
+   ;(overlay-bg painting bg)
+   (format t "writing image~%")
    (write-image painting output))
 
 (defun e ()
 	(load 'fa.lisp)
-	(blob "images/starry_night.png" "output/starry_night_edge.png")
+	(blob "paintings/starry_night.png" "output/starry_night_edge.png")
 	;(edge "images/odetojoy.png" "output/odetojoy_edge.png")
 	;(edge "images/the_scream.png" "output/scream_edge.png")
 	;(edge "images/odetojoy.png" "output/odetojoy_edge.png")
@@ -552,21 +672,44 @@
 	)
 
 (defun f ()
-   (setf canvas (load-painting "images/lenna.png"))
-   (greyscale-image canvas)
-   (setf canvas (dilate (discrete-convolve canvas *dilate*)
-		(make-8-bit-rgb-image 3 3 :initial-element 8)))
-   (threashold-image canvas 90)
-   (write-image canvas "output/lenna_painting.png"))
-   ;(filter "output/pacman_game_edge.png" "images/lenna.png" "output/lenna_painting.png"))
+   ;(format t "Loading images...")
+   ;(setf canvas (load-painting "images/lenna.png"))
+   ;(setf source (load-painting "images/lenna.png"))
+   ;(setf reference (load-painting "images/lenna.png"))
+   ;(format t "Greyscale...")
+   ;(greyscale-image canvas)
+   ;(format t "Dilate...")
+   ;(setf canvas (dilate (discrete-convolve canvas *dilate*)
+	;	(make-8-bit-rgb-image 3 3 :initial-element 4)))
+   ;(format t "Threashold...")
+   ;(threashold-image canvas 90)
+   ;(format t "Diffing...")
+   ;(diff-stroke reference canvas)
+
+   ;(format t "Blur...")
+   ;(setf reference (blur-image reference))
+   ;(format t "Overlay...")
+   ;(overlay-stroke source reference)
+
+   ;(format t "Write out...")
+   ;(write-image reference "output/lenna_painting_r.png")
+   ;(write-image canvas "output/lenna_painting_c.png")
+   ;(write-image source "output/lenna_painting_s.png"))
+   (filter-image "output/odetojoy_edge.png" "images/palm_beach.png" "output/palm_beach_odetojoy.png"))
    ;(filter "output/scream.png" "images/lenna.png" "output/lenna_painting_scream.png"))
 
 (defun s ()
    (stats))
 
-(defun stats ()
-   (setf blobs (label "output/scream.png"))
-   (format t "Average size stroke ~S~%" (avg-l blobs))
-   (format t "Minimum size stroke ~S~%" (min-l blobs))
-   (format t "Maximum size stroke ~S~%" (max-l blobs))
-   blobs)
+(defun reduce-strokes (blobs)
+   (setf blobs (cdr blobs))
+   (setf blobs (cdr (reverse blobs)))
+   (format t "~S~%" blobs)
+   (setf strokes '())
+   (setf strokes (append strokes (list (avg-l blobs))))
+   (setf strokes (append strokes (list (/ (+ (avg-l blobs) (min-l blobs)) 2))))
+   (setf strokes (append strokes (list (/ (+ (avg-l blobs) (max-l blobs)) 2))))
+   (setf strokes(mapcar 'floor strokes))
+   (sort strokes #'>)
+   (format t "~S~%" strokes)
+   strokes)
