@@ -601,23 +601,6 @@
                   (fill-circle img x y ss r g b))))))
 
 (defun stroke (source reference stroke-size)
-   ;(setf canvas (copy-image source))
-   ;(greyscale-image canvas)
-   ;(format t ".")
-   ;(if (< stroke-size 255)
-   ;   (setf canvas (dilate (discrete-convolve canvas *dilate*)
-   ;		(make-8-bit-rgb-image stroke-size stroke-size :initial-element stroke-size)))
-   ;   (threashold-image-colour canvas (ceiling (/ stroke-size 255))))
-   ;(format t ".")
-   ;(threashold-image canvas 90)
-   ;(format t ".")
-
-
-   ;(format t ".")
-   ;(if (> stroke-size 255)
-   ;   (loop for i below (ceiling (/ stroke-size 255)) do
-   ;      (setf reference (blur-image reference)))
-   ;   (diff-stroke reference canvas))
    (typecase source
       (8-bit-rgb-image
          (locally (declare (type 8-bit-rgb-image source))
@@ -625,13 +608,6 @@
                (format t "." stroke-size)
                (loop for i below (/ (+ width height) 2) do
                   (circle-stroke source reference stroke-size (random height) (random width))))))))
-
-   ;(format t ".")
-   ;(setf reference (blur-image reference))
-
-   ;(format t ".")
-   ;(overlay-stroke source reference) source)
-
 (defun paint (source r)
    (format t "Painting ~S~%" source)
    (format t "~S layers to paint~%" (length r))
@@ -649,13 +625,6 @@
    ;(setf blobs '(8 4))
    (format t "Painting photo~%")
    (setf painting (paint input blobs))
-   ;(format t "Determining the average colour~%")
-   ;(setf col (k-means-cluster-image-pixels (load-painting input) 2))
-   ;(format t "~S~%" col)
-   ;(format t "filling image~%")
-   ;(fill-image bg (aref col 0 0 0) (aref col 0 0 1) (aref col 0 0 2))
-   ;(format t "overlaying image~%")
-   ;(overlay-bg painting bg)
    (format t "writing image~%")
    (write-image painting output))
 
@@ -672,29 +641,6 @@
 	)
 
 (defun f ()
-   ;(format t "Loading images...")
-   ;(setf canvas (load-painting "images/lenna.png"))
-   ;(setf source (load-painting "images/lenna.png"))
-   ;(setf reference (load-painting "images/lenna.png"))
-   ;(format t "Greyscale...")
-   ;(greyscale-image canvas)
-   ;(format t "Dilate...")
-   ;(setf canvas (dilate (discrete-convolve canvas *dilate*)
-	;	(make-8-bit-rgb-image 3 3 :initial-element 4)))
-   ;(format t "Threashold...")
-   ;(threashold-image canvas 90)
-   ;(format t "Diffing...")
-   ;(diff-stroke reference canvas)
-
-   ;(format t "Blur...")
-   ;(setf reference (blur-image reference))
-   ;(format t "Overlay...")
-   ;(overlay-stroke source reference)
-
-   ;(format t "Write out...")
-   ;(write-image reference "output/lenna_painting_r.png")
-   ;(write-image canvas "output/lenna_painting_c.png")
-   ;(write-image source "output/lenna_painting_s.png"))
    (filter-image "output/odetojoy_edge.png" "images/palm_beach.png" "output/palm_beach_odetojoy.png"))
    ;(filter "output/scream.png" "images/lenna.png" "output/lenna_painting_scream.png"))
 
