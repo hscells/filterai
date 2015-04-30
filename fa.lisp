@@ -471,7 +471,7 @@
 
 ;; Edge detect
 ; http://academypublisher.com/ijrte/vol01/no02/ijrte0102250254.pdf
-(defun blob-detect (input output)
+(defun blob-detect (input)
 	(format t "~S~%" input)
 	(setf img (load-painting input))
 	(setf org (load-painting input))
@@ -519,8 +519,8 @@
 	(estimate-noise (load-painting input) output))
 
 ;; Shorthand function to run the edge detection
-(defun blob (input output)
-	(blob-detect input output))
+(defun blob (input)
+	(blob-detect input))
 
 (defun in (key haystack)
 	(not (not (member key haystack))))
@@ -600,37 +600,64 @@
                   ;(format t "~%~S,~S,~S~%" r g b)
                   (fill-circle img x y ss r g b))))))
 
-(defun stroke (source reference stroke-size)
+(defun stroke (source reference edges stroke-size)
+   (typecase source
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image source))
+            (with-image-bounds (height width) source
+               (loop for i below (/ (+ width height) 2) do
+                  (format t "." stroke-size)
+                  (circle-stroke source reference stroke-size (random height) (random width))))))))
+
+(defun paint-strokes (source edges stroke-size)
    (typecase source
       (8-bit-rgb-image
          (locally (declare (type 8-bit-rgb-image source))
             (with-image-bounds (height width) source
                (format t "." stroke-size)
-               (loop for i below (/ (+ width height) 2) do
-                  (circle-stroke source reference stroke-size (random height) (random width))))))))
-(defun paint (source r)
+               (loop for x below height do
+                  (loop for y below width do
+                     (multiple-value-bind (r g b)
+                        (pixel source x y)
+                        (declare (type (unsigned-byte 8) r g b))
+                        (multiple-value-bind (g g1 g2)
+                           (pixel edges x y)
+                           (declare (type (unsigned-byte 8) g g1 g2))
+                              (if (eq g 255)
+                                 (circle-stroke source source (ceiling (/ stroke-size 10)) x y)))))))))))
+
+(defun paint (source edges r)
    (format t "Painting ~S~%" source)
    (format t "~S layers to paint~%" (length r))
    (setf source (load-painting source))
    (setf reference (copy-image source))
-   ;(format t "~S" blobs)
+   (setf edges (load-painting edges))
+   (typecase source
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image source))
+            (with-image-bounds (height width) source
+               (setf edges (resize-image edges height width))))))
+   (format t "~S" blobs)
    (loop for i in r do
       (format t "~S" i)
-      (stroke source reference i)) source)
+        (stroke source reference edges i))
+   (loop for i in r do
+      (format t "~S" i)
+      (paint-strokes source edges i)) source)
       ;(setf source (blur-image source))) source)
 
-(defun filter-image (filter input output)
+(defun filter-image (filter edges input output)
    (format t "Labelling components~%")
    (setf blobs (reduce-strokes (label filter)))
    ;(setf blobs '(8 4))
    (format t "Painting photo~%")
-   (setf painting (paint input blobs))
+   (setf painting (paint input edges blobs))
    (format t "writing image~%")
    (write-image painting output))
 
 (defun e ()
 	(load 'fa.lisp)
-	(blob "paintings/starry_night.png" "output/starry_night_edge.png")
+	(blob "paintings/odetojoy.png")
 	;(edge "images/odetojoy.png" "output/odetojoy_edge.png")
 	;(edge "images/the_scream.png" "output/scream_edge.png")
 	;(edge "images/odetojoy.png" "output/odetojoy_edge.png")
@@ -641,7 +668,7 @@
 	)
 
 (defun f ()
-   (filter-image "output/odetojoy_edge.png" "images/palm_beach.png" "output/palm_beach_odetojoy.png"))
+   (filter-image "output/scream.png" "output/starry_night_edge.png" "images/palm_beach.png" "output/palm_starry_night.png"))
    ;(filter "output/scream.png" "images/lenna.png" "output/lenna_painting_scream.png"))
 
 (defun s ()
@@ -650,11 +677,10 @@
 (defun reduce-strokes (blobs)
    (setf blobs (cdr blobs))
    (setf blobs (cdr (reverse blobs)))
-   (format t "~S~%" blobs)
    (setf strokes '())
    (setf strokes (append strokes (list (avg-l blobs))))
    (setf strokes (append strokes (list (/ (+ (avg-l blobs) (min-l blobs)) 2))))
-   (setf strokes (append strokes (list (/ (+ (avg-l blobs) (max-l blobs)) 2))))
+   (setf strokes (append strokes (list (avg-l strokes))))
    (setf strokes(mapcar 'floor strokes))
    (sort strokes #'>)
    (format t "~S~%" strokes)
