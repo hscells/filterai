@@ -5,11 +5,9 @@
 ;; Load the image processing library
 (load "quicklisp/setup.lisp")
 (ql:quickload "opticl")
-(ql:quickload "jsown")
 
 ;; Define packages to use
 (use-package 'opticl)
-(use-package 'jsown)
 
 (defparameter *edge-kernel* #2A((0 1 0) (1 -4 1) (0 1 0)))
 (defparameter *dilate* #2A((0 1 0) (1 -4 1) (0 1 0)))
@@ -17,7 +15,6 @@
 (defparameter *gaussian* #2A((1 2 1) (2 4 2) (1 2 1)))
 
 (declaim (ftype (function (fixnum fixnum fixnum fixnum fixnum fixnum) fixnum) l2-distance-3))
-
 
 (defmacro multiple-value-list-remove-nulls (values)
   `(remove-if #'null (multiple-value-list ,values)))
@@ -451,23 +448,25 @@
 						(dotimes (k (third dims))
 							(setf sum (+ sum (aref arr i j k))))))))))
 
+(defun extract-noise (img output)
+   (greyscale-image img)
+   (setf m (make-array '(3 3)
+      :initial-contents
+         '(( 1 -2  1)
+           (-2  4 -2)
+           ( 1 -2  1))))
+   (setf img (discrete-convolve img m))
+   (write-image img output))
+
 ;; Apply a noise estimation algorithm
 ; http://www.kyxk.net/att.php?p.490.43283.358.pdf
-(defun estimate-noise (img output)
-	(greyscale-image img)
-	(setf m (make-array '(3 3)
-		:initial-contents
-			'(( 1 -2  1)
-			  (-2  4 -2)
-			  ( 1 -2  1))))
-	(setf img (discrete-convolve img m))
-	(setf sigma (add-all-elements img))
-	(write-image img output) ; output the image for now
+(defun estimate-noise (img)
+   (setf sigma (add-all-elements img))
 	(typecase img
 		(8-bit-rgb-image
 			(locally (declare (type 8-bit-rgb-image img))
 				(with-image-bounds (height width) img
-					(setf sigma (* sigma (sqrt (* 0.5 pi)) (/ 1 (* 6 (- width 2) (- height 2)))))))))sigma)
+					(setf sigma (* sigma (sqrt (* 0.5 pi)) (/ 1 (* 6 (- width 2) (- height 2))))))))) sigma)
 
 ;; Edge detect
 ; http://academypublisher.com/ijrte/vol01/no02/ijrte0102250254.pdf
@@ -499,6 +498,7 @@
 	(format t "Edge thinning~%")
 	(edge-thin img)
 
+   (format t "Writing to file~%")
    (write-image img "output/edges.png")
 
 	(format t "overlaying image~%")
@@ -510,13 +510,12 @@
 	(format t "K-means clustering~%")
 	(k-means org 5)
 
-
 	(format t "Writing to file~%")
 	(write-image org "output/blobs.png")) ; output the image for now
 
 ;; Shorthand function to run the noise estimation
 (defun noise (input output)
-	(estimate-noise (load-painting input) output))
+	(extract-noise (load-painting input) output))
 
 ;; Shorthand function to run the edge detection
 (defun blob (input)
@@ -540,13 +539,8 @@
 (defun sum-l (l)
    (apply '+ l))
 
-(defun sum-r (L)
-   (if L
-      (+ (car L) (sum-r (cdr L)))
-      0))
-
 (defun avg-l (l)
-   (float (/ (sum-r l) (length l))))
+   (float (/ (sum-l l) (length l))))
 
 (defun max-l (l)
    (apply 'max l))
@@ -576,12 +570,26 @@
       count-table)
       (values modes mode-count)))
 
-(defun label (image)
-	(setf img (load-painting image))
+(defun label (img)
    (sort (sum-components (label-components img) img) #'>))
 
 (defun scale (max min l)
    (float (+ (/ l max) (/ l min))))
+
+(defun resize (source painting)
+   (typecase source
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image source))
+            (with-image-bounds (height width) source
+               (setf painting (resize-image painting height width)))))))
+
+(defun resize-to-width (source w)
+   (typecase source
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image source))
+            (with-image-bounds (height width) source
+               (format t "~S,~S~%" w (ceiling (* (/ height width) w)))
+               (setf source (resize-image source (ceiling (* (/ height width) w)) w)))))))
 
 (defun scale-stroke (max min s)
    (if (< (scale max min s) 1)
@@ -605,16 +613,16 @@
       (8-bit-rgb-image
          (locally (declare (type 8-bit-rgb-image source))
             (with-image-bounds (height width) source
-               (loop for i below (/ (+ width height) 2) do
-                  (format t "." stroke-size)
-                  (circle-stroke source reference stroke-size (random height) (random width))))))))
+               (loop for i below (+ width height) do
+                  (format t ".")
+                  (circle-stroke source reference stroke-size (random height) (random width))))))) source)
 
 (defun paint-strokes (source edges stroke-size)
    (typecase source
       (8-bit-rgb-image
          (locally (declare (type 8-bit-rgb-image source))
             (with-image-bounds (height width) source
-               (format t "." stroke-size)
+               (format t ".")
                (loop for x below height do
                   (loop for y below width do
                      (multiple-value-bind (r g b)
@@ -624,7 +632,19 @@
                            (pixel edges x y)
                            (declare (type (unsigned-byte 8) g g1 g2))
                               (if (eq g 255)
-                                 (circle-stroke source source (ceiling (/ stroke-size 10)) x y)))))))))))
+                                 (circle-stroke source source (ceiling (/ stroke-size 10)) x y)))))))))) source)
+
+(defun paint-noise (source reference noise-level)
+   (format t "~S~%" noise-level)
+   (setf reference (load-painting reference))
+   (typecase source
+      (8-bit-rgb-image
+         (locally (declare (type 8-bit-rgb-image source))
+            (with-image-bounds (height width) source
+               (format t "~S~%" (ceiling (* noise-level (+ width height))))
+               (loop for i below (* noise-level (/ (+ width height) 10)) do
+                  (format t ".")
+                  (circle-stroke source reference 2 (random height) (random width))))))) source)
 
 (defun paint (source edges r)
    (format t "Painting ~S~%" source)
@@ -632,53 +652,43 @@
    (setf source (load-painting source))
    (setf reference (copy-image source))
    (setf edges (load-painting edges))
-   (typecase source
-      (8-bit-rgb-image
-         (locally (declare (type 8-bit-rgb-image source))
-            (with-image-bounds (height width) source
-               (setf edges (resize-image edges height width))))))
+   (setf edges (resize source edges))
    (format t "~S" blobs)
    (loop for i in r do
       (format t "~S" i)
-        (stroke source reference edges i))
+      (setf source (stroke source reference edges i)))
    (loop for i in r do
-      (format t "~S" i)
-      (paint-strokes source edges i)) source)
-      ;(setf source (blur-image source))) source)
+      (format t "~S" (ceiling (/ i 10)))
+      (setf source (paint-strokes source edges i))) source)
 
-(defun filter-image (filter edges input output)
+(defun filter-image-inputs (filter edges noise input output)
+   (setf reference (copy-image (load-painting input)))
    (format t "Labelling components~%")
-   (setf blobs (reduce-strokes (label filter)))
-   ;(setf blobs '(8 4))
+   (setf blobs (reduce-strokes (label (resize-to-width (load-painting filter) 180))))
    (format t "Painting photo~%")
    (setf painting (paint input edges blobs))
+   (format t "~%Adding noise~%")
+   (setf painting (paint-noise painting input (estimate-noise (load-painting noise))))
    (format t "writing image~%")
    (write-image painting output))
 
-(defun e ()
-	(load 'fa.lisp)
-	(blob "paintings/odetojoy.png")
-	;(edge "images/odetojoy.png" "output/odetojoy_edge.png")
-	;(edge "images/the_scream.png" "output/scream_edge.png")
-	;(edge "images/odetojoy.png" "output/odetojoy_edge.png")
-	;(edge "images/im_blauen.png" "output/im_blauen_edge.png")
-	;(edge "images/pacman_game.png" "output/pacman_game_edge.png")
-	;(edge "images/stardust.png" "output/stardust_edge.png")
-	;(edge "images/starry_night.png" "output/starry_night_edge.png")
-	)
+(defun b ()
+	(blob "paintings/untitled.png"))
 
 (defun f ()
-   (filter-image "output/scream.png" "output/starry_night_edge.png" "images/palm_beach.png" "output/palm_starry_night.png"))
-   ;(filter "output/scream.png" "images/lenna.png" "output/lenna_painting_scream.png"))
+   (filter-image-inputs "output/blobs.png" "output/edges.png" "output/noise.png" "images/palm_beach.png" "output/palm_beach_the_gate.png"))
 
-(defun s ()
-   (stats))
+
+(defun filter-image (painting image output)
+   (blob painting)
+   (noise painting "output/noise.png")
+   (filter-image-inputs "output/blobs.png" "output/edges.png" "output/noise.png" image output))
 
 (defun reduce-strokes (blobs)
-   (setf blobs (cdr blobs))
-   (setf blobs (cdr (reverse blobs)))
+   (format t "Reducing Strokes~%")
    (setf strokes '())
    (setf strokes (append strokes (list (avg-l blobs))))
+   (setf strokes (append strokes (list (* (avg-l blobs) 2))))
    (setf strokes (append strokes (list (/ (+ (avg-l blobs) (min-l blobs)) 2))))
    (setf strokes (append strokes (list (avg-l strokes))))
    (setf strokes(mapcar 'floor strokes))
